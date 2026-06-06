@@ -36,15 +36,19 @@ router.get('/', authenticateToken, (req, res) => {
 
   const result = booths.map(b => {
     const heat = heatmapData.find(h => h.booth_id === b.id) || {
+      id: null,
       booth_id: b.id,
       visitor_count: Math.floor(Math.random() * 50) + 10,
-      queue_length: Math.floor(Math.random() * 6)
+      queue_length: Math.floor(Math.random() * 6),
+      timestamp: new Date().toISOString()
     };
     return {
+      id: heat.id || b.id,
       boothId: b.id,
       boothNumber: b.booth_number,
       hall: b.hall,
       zone: b.zone,
+      area: b.area,
       visitorCount: heat.visitor_count,
       queueLength: heat.queue_length,
       timestamp: heat.timestamp
