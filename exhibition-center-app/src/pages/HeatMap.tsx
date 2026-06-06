@@ -1,22 +1,56 @@
-import React, { useMemo, useState } from 'react';
-import { useApp } from '../context/AppContext';
+import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import {
   MapPin, Users, Clock, RefreshCw, Info,
   Flame, ThermometerSun, Wind
 } from 'lucide-react';
-import { mockHeatMapData } from '../data/mockData';
+import { api } from '../utils/api';
+
+interface HeatmapRecord {
+  id: string;
+  boothId: string;
+  boothNumber: string;
+  hall: string;
+  zone: string;
+  area: number;
+  visitorCount: number;
+  queueLength: number;
+  timestamp: string;
+}
 
 const HeatMap: React.FC = () => {
-  const { booths } = useApp();
   const [selectedHall, setSelectedHall] = useState('1号馆');
+  const [heatmapData, setHeatmapData] = useState<HeatmapRecord[]>([]);
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
   const halls = ['1号馆', '2号馆', '3号馆', '4号馆'];
 
-  const hallBooths = useMemo(() => {
-    return booths.filter(b => b.hall === selectedHall);
-  }, [booths, selectedHall]);
+  useEffect(() => {
+    loadHeatmapData();
+  }, [selectedHall]);
+
+  const loadHeatmapData = async () => {
+    try {
+      setLoading(true);
+      const [data, statsData] = await Promise.all([
+        api.heatmap.get(selectedHall),
+        api.heatmap.getStats()
+      ]);
+      setHeatmapData(data as HeatmapRecord[]);
+      setStats(statsData);
+      setLastUpdate(new Date());
+    } catch (err) {
+      console.error('加载热力图数据失败:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    loadHeatmapData();
+  };
 
   const getHeatColor = (count: number) => {
     if (count >= 50) return 'bg-red-500';
@@ -32,14 +66,25 @@ const HeatMap: React.FC = () => {
     return '舒适';
   };
 
-  const handleRefresh = () => {
-    setLastUpdate(new Date());
-  };
+  const totalVisitors = heatmapData.reduce((sum, h) => sum + h.visitorCount, 0);
+  const hotBooths = heatmapData.filter(h => h.visitorCount >= 35).length;
+  const avgQueue = heatmapData.length > 0 
+    ? Math.round(heatmapData.reduce((sum, h) => sum + h.queueLength, 0) / heatmapData.length)
+    : 0;
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center py-20">
+          <div className="text-gray-500">加载中...</div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
       <div className="space-y-6">
-        {/* 展馆选择 */}
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
             {halls.map(hall => (
@@ -65,14 +110,13 @@ const HeatMap: React.FC = () => {
           </button>
         </div>
 
-        {/* 统计卡片 */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="card">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">当前观众</p>
                 <p className="text-3xl font-bold text-gray-900 mt-1">
-                  {mockHeatMapData.reduce((sum, h) => sum + h.visitorCount, 0)}
+                  {stats?.totalVisitors || totalVisitors}
                 </p>
               </div>
               <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
@@ -85,7 +129,7 @@ const HeatMap: React.FC = () => {
               <div>
                 <p className="text-sm text-gray-500">热门展位</p>
                 <p className="text-3xl font-bold text-gray-900 mt-1">
-                  {mockHeatMapData.filter(h => h.visitorCount >= 35).length}
+                  {stats?.hotBooths || hotBooths}
                 </p>
               </div>
               <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
@@ -98,7 +142,7 @@ const HeatMap: React.FC = () => {
               <div>
                 <p className="text-sm text-gray-500">平均排队</p>
                 <p className="text-3xl font-bold text-gray-900 mt-1">
-                  {Math.round(mockHeatMapData.reduce((sum, h) => sum + h.queueLength, 0) / mockHeatMapData.length)}人
+                  {stats?.avgQueue || avgQueue}人
                 </p>
               </div>
               <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
@@ -121,7 +165,6 @@ const HeatMap: React.FC = () => {
           </div>
         </div>
 
-        {/* 热力图 */}
         <div className="card">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -149,51 +192,41 @@ const HeatMap: React.FC = () => {
           </div>
 
           <div className="bg-gray-50 rounded-xl p-8">
-            {/* 模拟展馆平面图 */}
             <div className="relative">
-              {/* 入口 */}
               <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-primary-600 text-white text-sm rounded-full">
                 入口
               </div>
               
               <div className="grid grid-cols-6 gap-4 mt-4">
-                {hallBooths.map((booth, idx) => {
-                  const heatData = mockHeatMapData.find(h => h.boothId === booth.id);
-                  const visitorCount = heatData?.visitorCount || Math.floor(Math.random() * 60);
-                  const queueLength = heatData?.queueLength || Math.floor(Math.random() * 6);
-                  
-                  return (
-                    <div
-                      key={booth.id}
-                      className={`relative p-4 rounded-xl cursor-pointer transition-all hover:scale-105 ${getHeatColor(visitorCount)} bg-opacity-80`}
-                    >
-                      <div className="text-white">
-                        <p className="font-bold text-sm">{booth.boothNumber}</p>
-                        <p className="text-xs opacity-80">{booth.area}㎡</p>
-                      </div>
-                      <div className="mt-2 pt-2 border-t border-white/30">
-                        <div className="flex items-center gap-1 text-white text-xs">
-                          <Users className="w-3 h-3" />
-                          {visitorCount}
-                        </div>
-                        {queueLength > 0 && (
-                          <div className="flex items-center gap-1 text-white text-xs mt-1">
-                            <Clock className="w-3 h-3" />
-                            排队{queueLength}人
-                          </div>
-                        )}
-                      </div>
-                      {/* 悬浮提示 */}
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 hover:opacity-100 transition pointer-events-none whitespace-nowrap z-10">
-                        <p>{booth.boothNumber} - {getHeatIntensity(visitorCount)}</p>
-                        <p>当前人数: {visitorCount}人</p>
-                        {queueLength > 0 && <p>排队: {queueLength}人</p>}
-                      </div>
+                {heatmapData.map((record, idx) => (
+                  <div
+                    key={record.id}
+                    className={`relative p-4 rounded-xl cursor-pointer transition-all hover:scale-105 ${getHeatColor(record.visitorCount)} bg-opacity-80`}
+                  >
+                    <div className="text-white">
+                      <p className="font-bold text-sm">{record.boothNumber}</p>
+                      <p className="text-xs opacity-80">{record.area}㎡</p>
                     </div>
-                  );
-                })}
-                {/* 补位空展位 */}
-                {Array.from({ length: Math.max(0, 12 - hallBooths.length) }).map((_, idx) => (
+                    <div className="mt-2 pt-2 border-t border-white/30">
+                      <div className="flex items-center gap-1 text-white text-xs">
+                        <Users className="w-3 h-3" />
+                        {record.visitorCount}
+                      </div>
+                      {record.queueLength > 0 && (
+                        <div className="flex items-center gap-1 text-white text-xs mt-1">
+                          <Clock className="w-3 h-3" />
+                          排队{record.queueLength}人
+                        </div>
+                      )}
+                    </div>
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 hover:opacity-100 transition pointer-events-none whitespace-nowrap z-10">
+                      <p>{record.boothNumber} - {getHeatIntensity(record.visitorCount)}</p>
+                      <p>当前人数: {record.visitorCount}人</p>
+                      {record.queueLength > 0 && <p>排队: {record.queueLength}人</p>}
+                    </div>
+                  </div>
+                ))}
+                {Array.from({ length: Math.max(0, 12 - heatmapData.length) }).map((_, idx) => (
                   <div key={`empty-${idx}`} className="p-4 rounded-xl bg-gray-200 opacity-30" />
                 ))}
               </div>
@@ -201,7 +234,6 @@ const HeatMap: React.FC = () => {
           </div>
         </div>
 
-        {/* 展位详情列表 */}
         <div className="card">
           <h3 className="text-lg font-semibold flex items-center gap-2 mb-4">
             <Info className="w-5 h-5 text-primary-600" />
@@ -219,33 +251,27 @@ const HeatMap: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {hallBooths.map(booth => {
-                  const heatData = mockHeatMapData.find(h => h.boothId === booth.id);
-                  const visitorCount = heatData?.visitorCount || Math.floor(Math.random() * 60);
-                  const queueLength = heatData?.queueLength || Math.floor(Math.random() * 6);
-                  
-                  return (
-                    <tr key={booth.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4 font-medium">{booth.boothNumber}</td>
-                      <td className="py-3 px-4 text-gray-600">{booth.hall} {booth.zone}</td>
-                      <td className="py-3 px-4">{visitorCount}人</td>
-                      <td className="py-3 px-4">
-                        {queueLength > 0 ? `${queueLength}人` : '-'}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                          visitorCount >= 50 ? 'bg-red-100 text-red-700' :
-                          visitorCount >= 35 ? 'bg-orange-100 text-orange-700' :
-                          visitorCount >= 20 ? 'bg-yellow-100 text-yellow-700' :
-                          'bg-green-100 text-green-700'
-                        }`}>
-                          <span className={`w-2 h-2 rounded-full ${getHeatColor(visitorCount)}`} />
-                          {getHeatIntensity(visitorCount)}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {heatmapData.map(record => (
+                  <tr key={record.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="py-3 px-4 font-medium">{record.boothNumber}</td>
+                    <td className="py-3 px-4 text-gray-600">{record.hall} {record.zone}</td>
+                    <td className="py-3 px-4">{record.visitorCount}人</td>
+                    <td className="py-3 px-4">
+                      {record.queueLength > 0 ? `${record.queueLength}人` : '-'}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                        record.visitorCount >= 50 ? 'bg-red-100 text-red-700' :
+                        record.visitorCount >= 35 ? 'bg-orange-100 text-orange-700' :
+                        record.visitorCount >= 20 ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-green-100 text-green-700'
+                      }`}>
+                        <span className={`w-2 h-2 rounded-full ${getHeatColor(record.visitorCount)}`} />
+                        {getHeatIntensity(record.visitorCount)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

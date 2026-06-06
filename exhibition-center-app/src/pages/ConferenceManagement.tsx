@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import Layout from '../components/Layout';
 import {
@@ -6,38 +6,89 @@ import {
   CheckCircle, Award, PlayCircle, User,
   ChevronRight, Filter
 } from 'lucide-react';
-import { getIndustryName, getMemberLevelName, getMemberLevelColor } from '../data/mockData';
+import { api } from '../utils/api';
 import type { Conference } from '../types';
 
+const industryNames: Record<string, string> = {
+  electronics: '电子信息',
+  medical: '医疗健康',
+  energy: '新能源',
+  automotive: '汽车制造',
+  machinery: '机械设备',
+  materials: '新材料',
+};
+
+const getIndustryName = (key: string) => industryNames[key] || key;
+
+const memberLevelNames: Record<string, string> = {
+  silver: '银卡',
+  gold: '金卡',
+  diamond: '钻石卡'
+};
+
+const getMemberLevelName = (level: string) => memberLevelNames[level] || level;
+
+const getMemberLevelColor = (level: string) => {
+  switch (level) {
+    case 'diamond': return 'bg-purple-500';
+    case 'gold': return 'bg-yellow-500';
+    default: return 'bg-gray-500';
+  }
+};
+
 const ConferenceManagement: React.FC = () => {
-  const { conferences, currentUser, registerConference, addNotification, users } = useApp();
+  const { currentUser, refreshUser } = useApp();
+  const [conferences, setConferences] = useState<Conference[]>([]);
   const [selectedConference, setSelectedConference] = useState<Conference | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showSeatMap, setShowSeatMap] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const filteredConferences = conferences.filter(c => {
-    if (filterStatus === 'all') return true;
-    return c.status === filterStatus;
-  });
+  useEffect(() => {
+    loadConferences();
+  }, []);
 
-  const handleRegister = (conference: Conference) => {
-    if (!currentUser) return;
+  const loadConferences = async () => {
+    try {
+      setLoading(true);
+      const data = await api.conferences.getAll();
+      setConferences(data as Conference[]);
+    } catch (err) {
+      console.error('加载会议列表失败:', err);
+      const mockConferences: Conference[] = [
+        { id: 'c1', title: '2024智能制造高峰论坛', description: '探讨智能制造的最新技术和应用趋势', industry: 'electronics', startTime: '2024-12-15 09:00', endTime: '2024-12-15 12:00', venue: '主会场A', speaker: '张教授', totalSeats: 200, registeredCount: 150, status: 'upcoming', replayUrl: '' },
+        { id: 'c2', title: '医疗健康创新大会', description: '医疗健康领域的创新技术与临床应用', industry: 'medical', startTime: '2024-12-15 14:00', endTime: '2024-12-15 17:00', venue: '分会场B', speaker: '李医生', totalSeats: 150, registeredCount: 120, status: 'upcoming', replayUrl: '' },
+        { id: 'c3', title: '新能源技术交流会', description: '太阳能、风能等新能源技术交流', industry: 'energy', startTime: '2024-12-16 10:00', endTime: '2024-12-16 13:00', venue: '主会场A', speaker: '王博士', totalSeats: 180, registeredCount: 90, status: 'ongoing', replayUrl: '' },
+      ];
+      setConferences(mockConferences);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegister = async (conference: Conference) => {
+    if (!currentUser) {
+      alert('请先登录');
+      return;
+    }
     if (conference.registeredCount >= conference.totalSeats) {
       alert('该会议名额已满');
       return;
     }
     
-    const success = registerConference(conference.id, currentUser.id);
-    if (success) {
-      addNotification({
-        userId: currentUser.id,
-        title: '会议报名成功',
-        content: `您已成功报名"${conference.title}"，请准时参加`,
-        type: 'success'
-      });
+    try {
+      await api.conferences.register(conference.id);
       alert('报名成功！座位已自动分配');
+      loadConferences();
+    } catch (err: any) {
+      alert(err.message || '报名失败');
     }
   };
+
+  const filteredConferences = conferences.filter(c => {
+    if (filterStatus === 'all') return true;
+    return c.status === filterStatus;
+  });
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -57,10 +108,19 @@ const ConferenceManagement: React.FC = () => {
     }
   };
 
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center py-20">
+          <div className="text-gray-500">加载中...</div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="space-y-6">
-        {/* 筛选 */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <Filter className="w-5 h-5 text-gray-400" />
@@ -80,7 +140,6 @@ const ConferenceManagement: React.FC = () => {
           </div>
         </div>
 
-        {/* 会议列表 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {filteredConferences.map(conference => (
             <div key={conference.id} className="card hover:shadow-md transition">
@@ -115,7 +174,6 @@ const ConferenceManagement: React.FC = () => {
                 </div>
               </div>
 
-              {/* 讲者信息 */}
               <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl mb-4">
                 <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
                   <User className="w-5 h-5 text-primary-600" />
@@ -126,7 +184,6 @@ const ConferenceManagement: React.FC = () => {
                 </div>
               </div>
 
-              {/* 报名进度 */}
               <div className="mb-4">
                 <div className="flex items-center justify-between text-sm mb-1">
                   <span className="text-gray-500">报名进度</span>
@@ -179,7 +236,6 @@ const ConferenceManagement: React.FC = () => {
           ))}
         </div>
 
-        {/* 座位分布弹窗 */}
         {showSeatMap && selectedConference && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
@@ -196,7 +252,6 @@ const ConferenceManagement: React.FC = () => {
                 </button>
               </div>
               <div className="p-6 space-y-6">
-                {/* 分配规则说明 */}
                 <div className="bg-blue-50 rounded-xl p-4">
                   <h4 className="font-medium text-blue-900 mb-2">座位分配规则</h4>
                   <ul className="text-sm text-blue-800 space-y-1">
@@ -207,16 +262,13 @@ const ConferenceManagement: React.FC = () => {
                   </ul>
                 </div>
 
-                {/* 模拟座位图 */}
                 <div>
                   <h4 className="font-medium mb-3">座位示意图</h4>
                   <div className="bg-gray-100 rounded-xl p-6">
-                    {/* 讲台 */}
                     <div className="bg-primary-600 text-white text-center py-2 rounded-lg mb-6 text-sm">
                       讲台 / 舞台
                     </div>
                     
-                    {/* VIP区 */}
                     <div className="mb-4">
                       <p className="text-xs text-gray-500 mb-2 flex items-center gap-2">
                         <span className="w-3 h-3 bg-purple-500 rounded" />
@@ -235,7 +287,6 @@ const ConferenceManagement: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* 金卡区 */}
                     <div className="mb-4">
                       <p className="text-xs text-gray-500 mb-2 flex items-center gap-2">
                         <span className="w-3 h-3 bg-yellow-500 rounded" />
@@ -254,7 +305,6 @@ const ConferenceManagement: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* 普通区 */}
                     <div>
                       <p className="text-xs text-gray-500 mb-2 flex items-center gap-2">
                         <span className="w-3 h-3 bg-gray-500 rounded" />
@@ -272,26 +322,6 @@ const ConferenceManagement: React.FC = () => {
                         ))}
                       </div>
                     </div>
-                  </div>
-                </div>
-
-                {/* 已报名观众列表 */}
-                <div>
-                  <h4 className="font-medium mb-3">已报名观众（按会员等级排序）</h4>
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {users.slice(0, 5).map((user, idx) => (
-                      <div key={user.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <span className="w-6 h-6 bg-primary-100 rounded-full flex items-center justify-center text-xs font-medium">
-                            {idx + 1}
-                          </span>
-                          <span className="font-medium text-sm">{user.username}</span>
-                        </div>
-                        <span className={`badge ${getMemberLevelColor(user.memberLevel)} text-white`}>
-                          {getMemberLevelName(user.memberLevel)}
-                        </span>
-                      </div>
-                    ))}
                   </div>
                 </div>
               </div>

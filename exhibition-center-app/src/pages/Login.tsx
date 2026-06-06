@@ -1,18 +1,25 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useNavigate, Link } from 'react-router-dom';
-import { Building2, User, Lock, Mail, Phone, ChevronRight } from 'lucide-react';
+import { Building2, User, Lock, ChevronRight } from 'lucide-react';
 
 const Login: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const { login } = useApp();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (login(username, password)) {
+    setError('');
+    setLoading(true);
+    
+    const success = await login(username, password);
+    setLoading(false);
+    
+    if (success) {
       navigate('/dashboard');
     } else {
       setError('用户名或密码错误');
@@ -50,6 +57,7 @@ const Login: React.FC = () => {
                   onChange={(e) => setUsername(e.target.value)}
                   className="input pl-10"
                   placeholder="请输入用户名"
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -64,12 +72,17 @@ const Login: React.FC = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   className="input pl-10"
                   placeholder="请输入密码"
+                  disabled={loading}
                 />
               </div>
             </div>
 
-            <button type="submit" className="btn btn-primary w-full">
-              登录
+            <button 
+              type="submit" 
+              className="btn btn-primary w-full"
+              disabled={loading}
+            >
+              {loading ? '登录中...' : '登录'}
             </button>
           </form>
 

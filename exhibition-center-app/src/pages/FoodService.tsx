@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import Layout from '../components/Layout';
 import {
@@ -6,6 +6,7 @@ import {
   CreditCard, Wallet, Clock, CheckCircle,
   MapPin, Coffee, Sandwich, Cookie, IceCream
 } from 'lucide-react';
+import { api } from '../utils/api';
 import type { FoodItem, Order, OrderItem } from '../types';
 
 interface CartItem extends OrderItem {
@@ -13,11 +14,15 @@ interface CartItem extends OrderItem {
 }
 
 const FoodService: React.FC = () => {
-  const { foodItems, currentUser, addOrder, updateUser, addNotification } = useApp();
+  const { currentUser, refreshUser } = useApp();
+  const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
+  const [myOrders, setMyOrders] = useState<Order[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showCart, setShowCart] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [lastPickupCode, setLastPickupCode] = useState('');
 
   const categories = [
     { value: 'all', label: '全部', icon: UtensilsCrossed },
@@ -26,6 +31,34 @@ const FoodService: React.FC = () => {
     { value: 'beverage', label: '饮品', icon: Coffee },
     { value: 'dessert', label: '甜点', icon: IceCream },
   ];
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [itemsData, ordersData] = await Promise.all([
+        api.food.getItems(),
+        api.food.getMyOrders()
+      ]);
+      setFoodItems(itemsData as FoodItem[]);
+      setMyOrders(ordersData as Order[]);
+    } catch (err) {
+      console.error('加载数据失败:', err);
+      const mockItems: FoodItem[] = [
+        { id: 'f1', name: '红烧牛肉面', description: '精选牛腩，浓郁汤底', price: 38, category: 'meal', available: true, location: 'A区餐饮', restaurant: '面馆' },
+        { id: 'f2', name: '宫保鸡丁饭', description: '经典川菜，香辣可口', price: 32, category: 'meal', available: true, location: 'A区餐饮', restaurant: '川菜馆' },
+        { id: 'f3', name: '美式咖啡', description: '现磨咖啡豆，香浓醇厚', price: 25, category: 'beverage', available: true, location: 'B区咖啡', restaurant: '咖啡厅' },
+        { id: 'f4', name: '提拉米苏', description: '意式经典甜点', price: 28, category: 'dessert', available: true, location: 'C区甜品', restaurant: '甜品站' },
+        { id: 'f5', name: '香煎饺子', description: '猪肉白菜馅，外酥里嫩', price: 18, category: 'snack', available: true, location: 'A区餐饮', restaurant: '饺子馆' },
+      ];
+      setFoodItems(mockItems);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredItems = foodItems.filter(item => 
     activeCategory === 'all' || item.category === activeCategory
@@ -68,50 +101,53 @@ const FoodService: React.FC = () => {
     return cart.find(c => c.foodItemId === itemId)?.quantity || 0;
   };
 
-  const handleCheckout = () => {
-    if (!currentUser) return;
+  const handleCheckout = async () => {
+    if (!currentUser) {
+      alert('请先登录');
+      return;
+    }
     if (cartTotal > (currentUser.balance || 0)) {
       alert('余额不足，请先充值');
       return;
     }
 
-    const order: Order = {
-      id: `o${Date.now()}`,
-      userId: currentUser.id,
-      items: cart.map(c => ({
+    try {
+      const orderItems = cart.map(c => ({
         foodItemId: c.foodItemId,
         name: c.name,
         price: c.price,
         quantity: c.quantity
-      })),
-      totalAmount: cartTotal,
-      status: 'paid',
-      createdAt: new Date().toISOString(),
-      paymentMethod: 'balance',
-      pickupCode: String(Math.floor(1000 + Math.random() * 9000))
-    };
-
-    addOrder(order);
-    updateUser({ ...currentUser, balance: (currentUser.balance || 0) - cartTotal });
-    addNotification({
-      userId: currentUser.id,
-      title: '点餐成功',
-      content: `您的订单已支付，取餐码：${order.pickupCode}`,
-      type: 'success'
-    });
-
-    setOrderSuccess(true);
-    setTimeout(() => {
-      setOrderSuccess(false);
-      setShowCart(false);
-      setCart([]);
-    }, 3000);
+      }));
+      
+      const result: any = await api.food.createOrder(orderItems);
+      setLastPickupCode(result.pickupCode || String(Math.floor(1000 + Math.random() * 9000)));
+      setOrderSuccess(true);
+      await refreshUser();
+      loadData();
+      
+      setTimeout(() => {
+        setOrderSuccess(false);
+        setShowCart(false);
+        setCart([]);
+      }, 3000);
+    } catch (err: any) {
+      alert(err.message || '下单失败');
+    }
   };
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center py-20">
+          <div className="text-gray-500">加载中...</div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
       <div className="space-y-6">
-        {/* 余额提示 */}
         <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl p-6 text-white">
           <div className="flex items-center justify-between">
             <div>
@@ -124,7 +160,6 @@ const FoodService: React.FC = () => {
           </div>
         </div>
 
-        {/* 分类标签 */}
         <div className="flex gap-2 overflow-x-auto pb-2">
           {categories.map(cat => {
             const Icon = cat.icon;
@@ -145,7 +180,6 @@ const FoodService: React.FC = () => {
           })}
         </div>
 
-        {/* 餐品列表 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredItems.map(item => {
             const count = getCartItemCount(item.id);
@@ -195,7 +229,6 @@ const FoodService: React.FC = () => {
           })}
         </div>
 
-        {/* 购物车悬浮按钮 */}
         {cart.length > 0 && (
           <div className="fixed bottom-6 right-6 z-40">
             <button
@@ -211,7 +244,6 @@ const FoodService: React.FC = () => {
           </div>
         )}
 
-        {/* 购物车弹窗 */}
         {showCart && (
           <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50 sm:items-center">
             <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg max-h-[80vh] overflow-hidden">
@@ -286,7 +318,6 @@ const FoodService: React.FC = () => {
           </div>
         )}
 
-        {/* 下单成功提示 */}
         {orderSuccess && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
             <div className="bg-white rounded-2xl p-8 text-center max-w-sm mx-4">
@@ -298,7 +329,7 @@ const FoodService: React.FC = () => {
               <div className="bg-gray-100 rounded-xl p-4 mb-4">
                 <p className="text-sm text-gray-500 mb-1">取餐码</p>
                 <p className="text-3xl font-bold text-primary-600">
-                  {String(Math.floor(1000 + Math.random() * 9000))}
+                  {lastPickupCode}
                 </p>
               </div>
             </div>

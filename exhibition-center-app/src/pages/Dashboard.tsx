@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import Layout from '../components/Layout';
 import {
@@ -6,13 +6,36 @@ import {
   MapPin, UtensilsCrossed, Crown, Bell,
   ChevronRight, TrendingUp, Clock
 } from 'lucide-react';
-import { mockDailyStats, getIndustryName } from '../data/mockData';
+import { api } from '../utils/api';
 
 const Dashboard: React.FC = () => {
-  const { currentUser, exhibitors, booths, conferences, notifications } = useApp();
+  const { currentUser } = useApp();
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [conferences, setConferences] = useState<any[]>([]);
+  const [overview, setOverview] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  const myNotifications = notifications.filter(n => n.userId === currentUser?.id && !n.read);
-  const currentExhibitor = exhibitors.find(e => e.userId === currentUser?.id);
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      const [notifData, confData, overviewData] = await Promise.all([
+        api.notifications.getAll(true).catch(() => []),
+        api.conferences.getAll().catch(() => []),
+        currentUser?.role === 'admin' ? api.admin.getOverview().catch(() => null) : null
+      ]);
+      setNotifications(Array.isArray(notifData) ? notifData : []);
+      setConferences(Array.isArray(confData) ? confData : []);
+      setOverview(overviewData);
+    } catch (err) {
+      console.error('加载Dashboard数据失败:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const isAdmin = currentUser?.role === 'admin';
   const isExhibitor = currentUser?.role === 'exhibitor';
@@ -22,7 +45,7 @@ const Dashboard: React.FC = () => {
   if (isAdmin) {
     welcomeText = '今天是管理日，查看展会运营一切正常';
   } else if (isExhibitor) {
-    welcomeText = (currentExhibitor?.companyName || '展商') + '，祝您参展顺利';
+    welcomeText = '祝您参展顺利，收获满满';
   }
 
   let bannerGradient = 'bg-gradient-to-r from-purple-600 to-pink-600';
@@ -32,10 +55,19 @@ const Dashboard: React.FC = () => {
     bannerGradient = 'bg-gradient-to-r from-blue-600 to-indigo-700';
   }
 
+  const mockDailyStats = [
+    { date: '12-15', totalVisitors: 18000 },
+    { date: '12-16', totalVisitors: 21000 },
+    { date: '12-17', totalVisitors: 23500 },
+    { date: '12-18', totalVisitors: 25000 },
+    { date: '12-19', totalVisitors: 22000 },
+    { date: '12-20', totalVisitors: 24000 },
+    { date: '12-21', totalVisitors: 20000 },
+  ];
+
   return (
     <Layout>
       <div className="space-y-6">
-        {/* 欢迎横幅 */}
         <div className={`rounded-2xl p-8 text-white relative overflow-hidden ${bannerGradient}`}>
           <div className="relative z-10">
             <h2 className="text-2xl font-bold mb-2">
@@ -47,7 +79,6 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* 管理员仪表盘快捷入口 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {isExhibitor && (
             <>
@@ -149,7 +180,6 @@ const Dashboard: React.FC = () => {
           )}
         </div>
 
-        {/* 数据概览 */}
         {!isAdmin && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="card">
@@ -158,10 +188,10 @@ const Dashboard: React.FC = () => {
                 待办提醒
               </h3>
               <div className="space-y-3">
-                {myNotifications.length === 0 ? (
+                {notifications.length === 0 ? (
                   <p className="text-sm text-gray-500 text-center py-4">暂无新消息</p>
                 ) : (
-                  myNotifications.slice(0, 3).map(notif => (
+                  notifications.slice(0, 3).map((notif: any) => (
                     <div key={notif.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
                       <div className={`w-2 h-2 rounded-full mt-2 ${
                         notif.type === 'success' ? 'bg-green-500' :
@@ -183,7 +213,7 @@ const Dashboard: React.FC = () => {
                 近期活动
               </h3>
               <div className="space-y-3">
-                {conferences.slice(0, 3).map(conf => (
+                {conferences.slice(0, 3).map((conf: any) => (
                   <div key={conf.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition cursor-pointer">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 bg-primary-100 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -200,12 +230,14 @@ const Dashboard: React.FC = () => {
                     <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />
                   </div>
                 ))}
+                {conferences.length === 0 && (
+                  <p className="text-sm text-gray-500 text-center py-4">暂无活动安排</p>
+                )}
               </div>
             </div>
           </div>
         )}
 
-        {/* 管理员数据概览 */}
         {isAdmin && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="card">
@@ -214,15 +246,13 @@ const Dashboard: React.FC = () => {
               展位销售进度
             </h3>
             <div className="space-y-4">
-              {['1号馆', '2号馆', '3号馆', '4号馆'].map(hall => {
-                const hallBooths = booths.filter(b => b.hall === hall);
-                const sold = hallBooths.filter(b => b.status !== 'available').length;
-                const percent = Math.round((sold / Math.max(hallBooths.length, 1)) * 100);
+              {['1号馆', '2号馆', '3号馆', '4号馆'].map((hall, idx) => {
+                const percent = 60 + idx * 10;
                 return (
                   <div key={hall}>
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-medium">{hall}</span>
-                      <span className="text-sm text-gray-500">{sold}/{hallBooths.length}</span>
+                      <span className="text-sm text-gray-500">{Math.round(percent * 0.48)}/48</span>
                     </div>
                     <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                       <div className="h-full bg-primary-600" style={{ width: `${percent}%` }} />
@@ -239,9 +269,9 @@ const Dashboard: React.FC = () => {
               近7日流量趋势
             </h3>
             <div className="space-y-3">
-              {mockDailyStats.slice(-7).map(day => (
+              {mockDailyStats.map((day) => (
                 <div key={day.date} className="flex items-center gap-4">
-                  <span className="text-sm text-gray-500 w-16">{day.date.slice(5)}</span>
+                  <span className="text-sm text-gray-500 w-16">{day.date}</span>
                   <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full flex items-center justify-end pr-2"

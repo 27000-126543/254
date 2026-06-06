@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import Layout from '../components/Layout';
 import {
@@ -6,12 +6,24 @@ import {
   Calendar, MapPin, CheckCircle, Clock, XCircle,
   MessageSquare, Star
 } from 'lucide-react';
-import type { Product, BusinessMeeting, Visitor, User } from '../types';
+import { api } from '../utils/api';
+import type { Product, BusinessMeeting } from '../types';
+
+interface PotentialBuyer {
+  id: string;
+  name: string;
+  email: string;
+  interestedIndustries: string[];
+  matchScore: number;
+}
 
 const ProductManagement: React.FC = () => {
-  const { currentUser, exhibitors, visitors, meetings, users, addMeeting, addNotification } = useApp();
+  const { currentUser } = useApp();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [meetings, setMeetings] = useState<BusinessMeeting[]>([]);
+  const [potentialBuyers, setPotentialBuyers] = useState<PotentialBuyer[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAddProduct, setShowAddProduct] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [newProduct, setNewProduct] = useState({
     name: '',
     description: '',
@@ -19,58 +31,75 @@ const ProductManagement: React.FC = () => {
     tags: ''
   });
 
-  const currentExhibitor = exhibitors.find(e => e.userId === currentUser?.id);
-  const myMeetings = meetings.filter(m => m.exhibitorId === currentExhibitor?.id);
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  const potentialBuyers = useMemo(() => {
-    if (!currentExhibitor) return [];
-    const matchedVisitors = visitors.filter(v => 
-      v.interestedIndustries.includes(currentExhibitor.industry)
-    );
-    
-    return matchedVisitors.map(visitor => {
-      const user = users.find(u => u.id === visitor.userId);
-      const matchScore = Math.min(100, 
-        visitor.interestedIndustries.length * 15 + 
-        (user?.memberPoints || 0) / 100 +
-        Math.random() * 30
-      );
-      return { visitor, user, matchScore: Math.round(matchScore) };
-    }).sort((a, b) => b.matchScore - a.matchScore).slice(0, 6);
-  }, [currentExhibitor, visitors, users]);
-
-  const handleAddProduct = () => {
-    if (!currentExhibitor) return;
-    const product: Product = {
-      id: `p${Date.now()}`,
-      exhibitorId: currentExhibitor.id,
-      name: newProduct.name,
-      description: newProduct.description,
-      category: newProduct.category,
-      tags: newProduct.tags.split(',').map(t => t.trim()),
-    };
-    currentExhibitor.products.push(product);
-    setShowAddProduct(false);
-    setNewProduct({ name: '', description: '', category: '', tags: '' });
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [productsData, meetingsData, buyersData] = await Promise.all([
+        api.products.getMy(),
+        api.products.getMyMeetings(),
+        api.products.getPotentialBuyers()
+      ]);
+      setProducts(productsData as Product[]);
+      setMeetings(meetingsData as BusinessMeeting[]);
+      setPotentialBuyers(buyersData as PotentialBuyer[]);
+    } catch (err) {
+      console.error('加载数据失败:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleScheduleMeeting = (visitor: Visitor, user: User) => {
-    if (!currentExhibitor) return;
-    const meeting: BusinessMeeting = {
-      id: `m${Date.now()}`,
-      exhibitorId: currentExhibitor.id,
-      visitorId: visitor.id,
-      scheduledTime: '2024-12-20 14:00',
-      location: '1号馆商务洽谈区B',
-      status: 'pending',
-    };
-    addMeeting(meeting);
-    addNotification({
-      userId: user.id,
-      title: '商务洽谈邀请',
-      content: `${currentExhibitor.companyName}邀请您预约商务洽谈`,
-      type: 'info'
-    });
+  const handleAddProduct = async () => {
+    try {
+      await api.products.create({
+        name: newProduct.name,
+        description: newProduct.description,
+        category: newProduct.category,
+        tags: newProduct.tags.split(',').map(t => t.trim())
+      });
+      setShowAddProduct(false);
+      setNewProduct({ name: '', description: '', category: '', tags: '' });
+      loadData();
+    } catch (err: any) {
+      alert(err.message || '发布失败');
+    }
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    if (!confirm('确定删除该展品吗？')) return;
+    try {
+      await api.products.delete(id);
+      loadData();
+    } catch (err: any) {
+      alert(err.message || '删除失败');
+    }
+  };
+
+  const handleScheduleMeeting = async (buyer: PotentialBuyer) => {
+    try {
+      await api.products.createMeeting({
+        visitorId: buyer.id,
+        scheduledTime: '2024-12-20 14:00',
+        location: '1号馆商务洽谈区B'
+      });
+      alert('洽谈邀请已发送');
+      loadData();
+    } catch (err: any) {
+      alert(err.message || '预约失败');
+    }
+  };
+
+  const handleUpdateMeetingStatus = async (id: string, status: string) => {
+    try {
+      await api.products.updateMeetingStatus(id, status);
+      loadData();
+    } catch (err: any) {
+      alert(err.message || '操作失败');
+    }
   };
 
   const getMeetingStatusColor = (status: string) => {
@@ -93,10 +122,19 @@ const ProductManagement: React.FC = () => {
     }
   };
 
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center py-20">
+          <div className="text-gray-500">加载中...</div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="space-y-6">
-        {/* 展品管理 */}
         <div className="card">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -112,18 +150,17 @@ const ProductManagement: React.FC = () => {
             </button>
           </div>
 
-          {currentExhibitor?.products.length === 0 ? (
+          {products.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <Package className="w-12 h-12 mx-auto mb-4 text-gray-300" />
               <p>暂无展品，点击上方按钮发布</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {currentExhibitor?.products.map(product => (
+              {products.map(product => (
                 <div
                   key={product.id}
-                  className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition cursor-pointer"
-                  onClick={() => setSelectedProduct(product)}
+                  className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition"
                 >
                   <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg mb-3 flex items-center justify-center">
                     <Package className="w-12 h-12 text-gray-400" />
@@ -143,7 +180,10 @@ const ProductManagement: React.FC = () => {
                       <button className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition">
                         <Edit2 className="w-4 h-4" />
                       </button>
-                      <button className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition">
+                      <button 
+                        onClick={() => handleDeleteProduct(product.id)}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                      >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -154,7 +194,6 @@ const ProductManagement: React.FC = () => {
           )}
         </div>
 
-        {/* 智能匹配潜在买家 */}
         <div className="card">
           <h3 className="text-lg font-semibold flex items-center gap-2 mb-6">
             <Target className="w-5 h-5 text-primary-600" />
@@ -164,34 +203,34 @@ const ProductManagement: React.FC = () => {
             基于产品标签和观众画像，为您自动匹配潜在买家
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {potentialBuyers.map(({ visitor, user, matchScore }) => (
-              <div key={visitor.id} className="border border-gray-200 rounded-xl p-4">
+            {potentialBuyers.map((buyer) => (
+              <div key={buyer.id} className="border border-gray-200 rounded-xl p-4">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
                       <span className="text-primary-600 font-bold">
-                        {visitor.name.charAt(0)}
+                        {buyer.name.charAt(0)}
                       </span>
                     </div>
                     <div>
-                      <h4 className="font-semibold">{visitor.name}</h4>
-                      <p className="text-sm text-gray-500">{user?.email}</p>
+                      <h4 className="font-semibold">{buyer.name}</h4>
+                      <p className="text-sm text-gray-500">{buyer.email}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
                     <Star className="w-4 h-4 text-yellow-500" fill="currentColor" />
-                    <span className="text-sm font-medium">{matchScore}%</span>
+                    <span className="text-sm font-medium">{buyer.matchScore}%</span>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1 mb-4">
-                  {visitor.interestedIndustries.map(ind => (
+                  {buyer.interestedIndustries.map((ind: string) => (
                     <span key={ind} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">
                       {ind}
                     </span>
                   ))}
                 </div>
                 <button
-                  onClick={() => handleScheduleMeeting(visitor, user!)}
+                  onClick={() => handleScheduleMeeting(buyer)}
                   className="w-full btn btn-primary flex items-center justify-center gap-2"
                 >
                   <Calendar className="w-4 h-4" />
@@ -202,52 +241,57 @@ const ProductManagement: React.FC = () => {
           </div>
         </div>
 
-        {/* 商务洽谈日程 */}
         <div className="card">
           <h3 className="text-lg font-semibold flex items-center gap-2 mb-6">
             <MessageSquare className="w-5 h-5 text-primary-600" />
             商务洽谈日程
           </h3>
-          {myMeetings.length === 0 ? (
+          {meetings.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <Calendar className="w-12 h-12 mx-auto mb-4 text-gray-300" />
               <p>暂无洽谈安排</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {myMeetings.map(meeting => {
-                const visitor = visitors.find(v => v.id === meeting.visitorId);
-                return (
-                  <div key={meeting.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
-                        <Users className="w-5 h-5 text-primary-600" />
-                      </div>
-                      <div>
-                        <h4 className="font-medium">{visitor?.name || '潜在买家'}</h4>
-                        <div className="flex items-center gap-4 text-sm text-gray-500">
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-4 h-4" />
-                            {meeting.scheduledTime}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-4 h-4" />
-                            {meeting.location}
-                          </span>
-                        </div>
+              {meetings.map(meeting => (
+                <div key={meeting.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+                      <Users className="w-5 h-5 text-primary-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium">{(meeting as any).visitorName || '潜在买家'}</h4>
+                      <div className="flex items-center gap-4 text-sm text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-4 h-4" />
+                          {meeting.scheduledTime}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-4 h-4" />
+                          {meeting.location}
+                        </span>
                       </div>
                     </div>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <span className={`badge ${getMeetingStatusColor(meeting.status)}`}>
                       {getMeetingStatusText(meeting.status)}
                     </span>
+                    {meeting.status === 'pending' && (
+                      <button
+                        onClick={() => handleUpdateMeetingStatus(meeting.id, 'confirmed')}
+                        className="btn btn-primary text-xs py-1 px-2"
+                      >
+                        确认
+                      </button>
+                    )}
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
           )}
         </div>
 
-        {/* 发布展品弹窗 */}
         {showAddProduct && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl max-w-md w-full">

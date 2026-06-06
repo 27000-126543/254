@@ -97,7 +97,7 @@ export interface Conference {
   status: MeetingStatus;
   industry: Industry;
   replayUrl?: string;
-  seatAssignments: SeatAssignment[];
+  seatAssignments?: SeatAssignment[];
 }
 
 export interface SeatAssignment {

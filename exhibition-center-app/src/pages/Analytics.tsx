@@ -1,28 +1,64 @@
-import React from 'react';
-import { useApp } from '../context/AppContext';
+import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import {
   BarChart3, TrendingUp, Lightbulb, Target,
-  DollarSign, ArrowUpRight, ArrowDownRight,
-  Sparkles, PieChart, Calendar
+  DollarSign, ArrowUpRight,
+  Sparkles, PieChart
 } from 'lucide-react';
-import { mockIndustryTrends, mockDailyStats, getIndustryName } from '../data/mockData';
+import { api } from '../utils/api';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, RadarChart,
   PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar
 } from 'recharts';
 
-const Analytics: React.FC = () => {
-  const { exhibitors, booths } = useApp();
+const industryNames: Record<string, string> = {
+  electronics: '电子信息',
+  medical: '医疗健康',
+  energy: '新能源',
+  automotive: '汽车制造',
+  machinery: '机械设备',
+  materials: '新材料',
+};
 
-  const trendData = mockIndustryTrends.map(t => ({
+const getIndustryName = (key: string) => industryNames[key] || key;
+
+const Analytics: React.FC = () => {
+  const [industryTrends, setIndustryTrends] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadAnalyticsData();
+  }, []);
+
+  const loadAnalyticsData = async () => {
+    try {
+      setLoading(true);
+      const data = await api.admin.getIndustryTrends().catch(() => []);
+      setIndustryTrends(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('加载分析数据失败:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const mockIndustryTrends = industryTrends.length > 0 ? industryTrends : [
+    { industry: 'electronics', growthRate: 15.2, predictedPopularity: 85, suggestedPrice: 15000 },
+    { industry: 'medical', growthRate: 18.5, predictedPopularity: 88, suggestedPrice: 18000 },
+    { industry: 'energy', growthRate: 22.3, predictedPopularity: 95, suggestedPrice: 20000 },
+    { industry: 'automotive', growthRate: 12.8, predictedPopularity: 78, suggestedPrice: 16000 },
+    { industry: 'machinery', growthRate: 8.5, predictedPopularity: 70, suggestedPrice: 12000 },
+    { industry: 'materials', growthRate: 10.2, predictedPopularity: 75, suggestedPrice: 13000 },
+  ];
+
+  const trendData = mockIndustryTrends.map((t: any) => ({
     name: getIndustryName(t.industry),
     增长率: t.growthRate,
     预测热度: t.predictedPopularity,
   }));
 
-  const priceData = mockIndustryTrends.map(t => ({
+  const priceData = mockIndustryTrends.map((t: any) => ({
     name: getIndustryName(t.industry),
     建议定价: t.suggestedPrice / 1000,
     当前均价: Math.round(t.suggestedPrice * 0.9) / 1000,
@@ -48,24 +84,33 @@ const Analytics: React.FC = () => {
       reason: '市场需求稳定，展位供不应求，有价格上涨空间'
     },
     {
-      title: '纺织服装展区',
+      title: '机械设备展区',
       priority: '低',
-      suggestion: '建议缩减面积20%，转型为时尚创意设计展区',
+      suggestion: '建议缩减面积20%，转型为智能装备展区',
       reason: '行业增长放缓，传统业态吸引力下降，需转型升级'
     },
   ];
 
-  const radarData = mockIndustryTrends.slice(0, 6).map(t => ({
+  const radarData = mockIndustryTrends.slice(0, 6).map((t: any) => ({
     subject: getIndustryName(t.industry),
     A: t.predictedPopularity,
     B: Math.round(t.growthRate * 5),
     fullMark: 100,
   }));
 
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center py-20">
+          <div className="text-gray-500">加载中...</div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="space-y-6">
-        {/* 预测概览 */}
         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-6 text-white">
           <div className="flex items-center gap-2 mb-4">
             <Sparkles className="w-6 h-6" />
@@ -106,7 +151,6 @@ const Analytics: React.FC = () => {
           </div>
         </div>
 
-        {/* 行业趋势分析 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="card">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -145,7 +189,6 @@ const Analytics: React.FC = () => {
           </div>
         </div>
 
-        {/* 雷达图 */}
         <div className="card">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <PieChart className="w-5 h-5 text-primary-600" />
@@ -165,7 +208,6 @@ const Analytics: React.FC = () => {
           </div>
         </div>
 
-        {/* 策略建议 */}
         <div className="card">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Lightbulb className="w-5 h-5 text-yellow-500" />

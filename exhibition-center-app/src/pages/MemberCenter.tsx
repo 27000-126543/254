@@ -6,28 +6,45 @@ import {
   Star, CheckCircle, ArrowRight, Clock, Zap,
   Headphones, BadgeCheck, Sparkles
 } from 'lucide-react';
-import { getMemberLevelName, getMemberLevelColor } from '../data/mockData';
 import type { MemberLevel } from '../types';
 
+const memberLevelNames: Record<string, string> = {
+  silver: '银卡',
+  gold: '金卡',
+  diamond: '钻石卡'
+};
+
+const getMemberLevelName = (level: string) => memberLevelNames[level] || '银卡';
+
+const getMemberLevelColor = (level: string) => {
+  switch (level) {
+    case 'diamond': return 'bg-purple-500';
+    case 'gold': return 'bg-yellow-500';
+    default: return 'bg-gray-500';
+  }
+};
+
 const MemberCenter: React.FC = () => {
-  const { currentUser, updateUser, addNotification } = useApp();
+  const { currentUser, memberInfo, recharge } = useApp();
 
   const levelThresholds = {
-    silver: { min: 0, max: 5000, label: '银卡' },
-    gold: { min: 5000, max: 20000, label: '金卡' },
-    diamond: { min: 20000, max: Infinity, label: '钻石卡' },
+    silver: { min: 0, max: 10000, label: '银卡' },
+    gold: { min: 10000, max: 50000, label: '金卡' },
+    diamond: { min: 50000, max: Infinity, label: '钻石卡' },
   };
 
-  const currentLevelData = levelThresholds[currentUser?.memberLevel || 'silver'];
-  const nextLevel = currentUser?.memberLevel === 'silver' ? 'gold' : 
-                    currentUser?.memberLevel === 'gold' ? 'diamond' : null;
-  const nextLevelData = nextLevel ? levelThresholds[nextLevel] : null;
+  const currentLevel = memberInfo?.level || currentUser?.memberLevel || 'silver';
+  const currentLevelData = levelThresholds[currentLevel as keyof typeof levelThresholds];
+  const nextLevel = currentLevel === 'silver' ? 'gold' : 
+                    currentLevel === 'gold' ? 'diamond' : null;
+  const nextLevelData = nextLevel ? levelThresholds[nextLevel as keyof typeof levelThresholds] : null;
   
+  const totalConsumption = currentUser?.totalConsumption || currentUser?.memberPoints || 0;
   const progress = nextLevelData ? 
-    Math.min(100, ((currentUser?.memberPoints || 0) - currentLevelData.min) / (nextLevelData.min - currentLevelData.min) * 100) : 100;
+    Math.min(100, ((totalConsumption - currentLevelData.min) / (nextLevelData.min - currentLevelData.min) * 100)) : 100;
 
   const pointsToNext = nextLevelData ? 
-    Math.max(0, nextLevelData.min - (currentUser?.memberPoints || 0)) : 0;
+    Math.max(0, nextLevelData.min - totalConsumption) : 0;
 
   const benefits = {
     silver: [
@@ -53,28 +70,22 @@ const MemberCenter: React.FC = () => {
     ]
   };
 
-  const handleRecharge = (amount: number) => {
+  const handleRecharge = async (amount: number) => {
     if (!currentUser) return;
-    updateUser({
-      ...currentUser,
-      balance: (currentUser.balance || 0) + amount,
-      memberPoints: currentUser.memberPoints + amount
-    });
-    addNotification({
-      userId: currentUser.id,
-      title: '充值成功',
-      content: `成功充值¥${amount}，会员积分+${amount}`,
-      type: 'success'
-    });
+    const success = await recharge(amount);
+    if (success) {
+      alert(`充值成功！充值¥${amount}`);
+    } else {
+      alert('充值失败，请重试');
+    }
   };
 
   return (
     <Layout>
       <div className="space-y-6">
-        {/* 会员卡片 */}
         <div className={`rounded-3xl p-8 text-white relative overflow-hidden ${
-          currentUser?.memberLevel === 'diamond' ? 'bg-gradient-to-br from-purple-600 to-indigo-700' :
-          currentUser?.memberLevel === 'gold' ? 'bg-gradient-to-br from-yellow-500 to-orange-600' :
+          currentLevel === 'diamond' ? 'bg-gradient-to-br from-purple-600 to-indigo-700' :
+          currentLevel === 'gold' ? 'bg-gradient-to-br from-yellow-500 to-orange-600' :
           'bg-gradient-to-br from-gray-500 to-gray-700'
         }`}>
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
@@ -84,20 +95,20 @@ const MemberCenter: React.FC = () => {
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <Crown className="w-8 h-8" />
-                <span className="text-xl font-bold">{getMemberLevelName(currentUser?.memberLevel || 'silver')}会员</span>
+                <span className="text-xl font-bold">{getMemberLevelName(currentLevel)}会员</span>
               </div>
               <span className="text-white/80 text-sm">NO.{currentUser?.id?.toUpperCase()}</span>
             </div>
 
             <div className="mb-6">
               <h2 className="text-2xl font-bold mb-1">{currentUser?.username}</h2>
-              <p className="text-white/70">{currentUser?.company || '专业观众'}</p>
+              <p className="text-white/70">{currentUser?.company || (currentUser?.role === 'exhibitor' ? '参展商' : '专业观众')}</p>
             </div>
 
             <div className="flex items-end justify-between">
               <div>
-                <p className="text-white/70 text-sm mb-1">可用积分</p>
-                <p className="text-3xl font-bold">{(currentUser?.memberPoints || 0).toLocaleString()}</p>
+                <p className="text-white/70 text-sm mb-1">累计消费</p>
+                <p className="text-3xl font-bold">{totalConsumption.toLocaleString()}</p>
               </div>
               <div className="text-right">
                 <p className="text-white/70 text-sm mb-1">账户余额</p>
@@ -107,7 +118,6 @@ const MemberCenter: React.FC = () => {
           </div>
         </div>
 
-        {/* 升级进度 */}
         {nextLevelData && (
           <div className="card">
             <div className="flex items-center justify-between mb-4">
@@ -116,16 +126,16 @@ const MemberCenter: React.FC = () => {
                 升级进度
               </h3>
               <span className="text-sm text-gray-500">
-                再获得 <span className="text-primary-600 font-medium">{pointsToNext.toLocaleString()}</span> 积分升级
+                再消费 <span className="text-primary-600 font-medium">¥{pointsToNext.toLocaleString()}</span> 升级
               </span>
             </div>
             <div className="flex items-center gap-4">
-              <span className={`px-3 py-1 rounded-full text-sm font-medium ${getMemberLevelColor(currentUser?.memberLevel || 'silver')} text-white`}>
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${getMemberLevelColor(currentLevel)} text-white`}>
                 {currentLevelData.label}
               </span>
               <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all ${getMemberLevelColor(currentUser?.memberLevel || 'silver')}`}
+                  className={`h-full rounded-full transition-all ${getMemberLevelColor(currentLevel)}`}
                   style={{ width: `${progress}%` }}
                 />
               </div>
@@ -136,20 +146,19 @@ const MemberCenter: React.FC = () => {
             <div className="mt-4 p-4 bg-blue-50 rounded-xl">
               <p className="text-sm text-blue-800">
                 <Star className="w-4 h-4 inline mr-1 text-blue-600" />
-                累计参展{currentUser?.exhibitionCount || 0}次，消费¥{(currentUser?.totalConsumption || 0).toLocaleString()}
+                会员等级规则：消费满¥10,000升级金卡，满¥50,000升级钻石卡
               </p>
             </div>
           </div>
         )}
 
-        {/* 会员权益 */}
         <div className="card">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Gift className="w-5 h-5 text-primary-600" />
             专属权益
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {benefits[currentUser?.memberLevel || 'silver'].map((benefit, idx) => {
+            {benefits[currentLevel as keyof typeof benefits].map((benefit, idx) => {
               const Icon = benefit.icon;
               return (
                 <div key={idx} className="flex items-start gap-4 p-4 bg-gray-50 rounded-xl">
@@ -166,7 +175,6 @@ const MemberCenter: React.FC = () => {
           </div>
         </div>
 
-        {/* 快速充值 */}
         <div className="card">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <CreditCard className="w-5 h-5 text-primary-600" />
@@ -187,12 +195,11 @@ const MemberCenter: React.FC = () => {
           <div className="p-4 bg-green-50 rounded-xl flex items-center gap-3">
             <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
             <p className="text-sm text-green-800">
-              充值金额同时计入会员积分，每消费1元累计1积分
+              充值金额同时计入消费总额，每消费1元累计1元，用于会员等级升级
             </p>
           </div>
         </div>
 
-        {/* 等级说明 */}
         <div className="card">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Crown className="w-5 h-5 text-primary-600" />
@@ -200,7 +207,7 @@ const MemberCenter: React.FC = () => {
           </h3>
           <div className="space-y-4">
             {Object.entries(levelThresholds).map(([level, data]) => {
-              const isActive = currentUser?.memberLevel === level;
+              const isActive = currentLevel === level;
               return (
                 <div
                   key={level}
@@ -208,7 +215,7 @@ const MemberCenter: React.FC = () => {
                     isActive ? 'border-primary-500 bg-primary-50' : 'border-gray-100 bg-gray-50'
                   }`}
                 >
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${getMemberLevelColor(level as MemberLevel)}`}>
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${getMemberLevelColor(level)}`}>
                     <Crown className="w-6 h-6 text-white" />
                   </div>
                   <div className="flex-1">
@@ -220,8 +227,8 @@ const MemberCenter: React.FC = () => {
                     </div>
                     <p className="text-sm text-gray-500">
                       {data.max === Infinity ? 
-                        `${data.min.toLocaleString()}积分及以上` : 
-                        `${data.min.toLocaleString()} - ${data.max.toLocaleString()}积分`
+                        `${data.min.toLocaleString()}元及以上` : 
+                        `${data.min.toLocaleString()} - ${data.max.toLocaleString()}元`
                       }
                     </p>
                   </div>

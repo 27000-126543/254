@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useNavigate, Link } from 'react-router-dom';
-import { Building2, User, Lock, Mail, Phone, Building, ChevronLeft } from 'lucide-react';
+import { Building2, User, ChevronLeft } from 'lucide-react';
 import { industryList } from '../data/mockData';
 import type { Industry, UserRole } from '../types';
 
@@ -19,23 +19,41 @@ const Register: React.FC = () => {
     interestedIndustries: [] as Industry[]
   });
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const { register } = useApp();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.password !== formData.confirmPassword) {
       setError('两次输入的密码不一致');
       return;
     }
-    const success = register({
-      ...formData,
-      role
-    });
+    setError('');
+    setLoading(true);
+
+    const registerData: any = {
+      username: formData.username,
+      password: formData.password,
+      email: formData.email,
+      phone: formData.phone,
+      role,
+    };
+
+    if (role === 'exhibitor') {
+      registerData.company = formData.company;
+      registerData.industry = formData.industry;
+    } else if (role === 'visitor') {
+      registerData.interestedIndustries = formData.interestedIndustries;
+    }
+
+    const success = await register(registerData);
+    setLoading(false);
+
     if (success) {
-      navigate('/login');
+      navigate('/dashboard');
     } else {
-      setError('用户名已存在');
+      setError('注册失败，请稍后重试');
     }
   };
 
@@ -66,9 +84,9 @@ const Register: React.FC = () => {
           {step === 1 && (
             <div>
               <h2 className="text-xl font-semibold mb-6">请选择您的身份</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 {[
-                  { value: 'exhibitor', label: '参展商', icon: Building, desc: '预订展位、展示产品' },
+                  { value: 'exhibitor', label: '参展商', icon: Building2, desc: '预订展位、展示产品' },
                   { value: 'visitor', label: '专业观众', icon: User, desc: '参观展会、预约洽谈' },
                 ].map(item => (
                   <button
@@ -112,6 +130,7 @@ const Register: React.FC = () => {
                     className="input"
                     placeholder="请输入用户名"
                     required
+                    disabled={loading}
                   />
                 </div>
                 <div>
@@ -122,7 +141,7 @@ const Register: React.FC = () => {
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     className="input"
                     placeholder="请输入手机号"
-                    required
+                    disabled={loading}
                   />
                 </div>
               </div>
@@ -136,6 +155,7 @@ const Register: React.FC = () => {
                   className="input"
                   placeholder="请输入邮箱"
                   required
+                  disabled={loading}
                 />
               </div>
 
@@ -150,6 +170,7 @@ const Register: React.FC = () => {
                       className="input"
                       placeholder="请输入公司名称"
                       required
+                      disabled={loading}
                     />
                   </div>
                   <div>
@@ -158,6 +179,7 @@ const Register: React.FC = () => {
                       value={formData.industry}
                       onChange={(e) => setFormData({ ...formData, industry: e.target.value as Industry })}
                       className="input"
+                      disabled={loading}
                     >
                       {industryList.map(ind => (
                         <option key={ind.value} value={ind.value}>{ind.label}</option>
@@ -199,6 +221,7 @@ const Register: React.FC = () => {
                     className="input"
                     placeholder="请输入密码"
                     required
+                    disabled={loading}
                   />
                 </div>
                 <div>
@@ -210,16 +233,17 @@ const Register: React.FC = () => {
                     className="input"
                     placeholder="请确认密码"
                     required
+                    disabled={loading}
                   />
                 </div>
               </div>
 
               <div className="flex gap-4">
-                <button type="button" onClick={() => setStep(1)} className="btn btn-secondary flex-1">
+                <button type="button" onClick={() => setStep(1)} className="btn btn-secondary flex-1" disabled={loading}>
                   上一步
                 </button>
-                <button type="submit" className="btn btn-primary flex-1">
-                  注册
+                <button type="submit" className="btn btn-primary flex-1" disabled={loading}>
+                  {loading ? '注册中...' : '注册'}
                 </button>
               </div>
             </form>
