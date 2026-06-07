@@ -14,9 +14,8 @@ import { api } from '../utils/api';
 
 const AdminDashboard: React.FC = () => {
   const [selectedHall, setSelectedHall] = useState('all');
-  const [selectedDate, setSelectedDate] = useState('2024-12-20');
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [overview, setOverview] = useState<any>(null);
-  const [dailyStats, setDailyStats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const halls = ['all', '1号馆', '2号馆', '3号馆', '4号馆'];
@@ -28,12 +27,8 @@ const AdminDashboard: React.FC = () => {
   const loadAdminData = async () => {
     try {
       setLoading(true);
-      const [overviewData, statsData] = await Promise.all([
-        api.admin.getOverview().catch(() => null),
-        api.admin.getDailyStats().catch(() => [])
-      ]);
+      const overviewData = await api.admin.getOverview();
       setOverview(overviewData);
-      setDailyStats(Array.isArray(statsData) ? statsData : []);
     } catch (err) {
       console.error('加载管理员数据失败:', err);
     } finally {
@@ -41,62 +36,47 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const mockDailyStats = dailyStats.length > 0 ? dailyStats : [
-    { date: '12-15', totalVisitors: 18000, totalRevenue: 520000, foodSales: 85000, conferenceAttendance: 3200 },
-    { date: '12-16', totalVisitors: 21000, totalRevenue: 580000, foodSales: 92000, conferenceAttendance: 3800 },
-    { date: '12-17', totalVisitors: 23500, totalRevenue: 650000, foodSales: 105000, conferenceAttendance: 4200 },
-    { date: '12-18', totalVisitors: 25000, totalRevenue: 720000, foodSales: 118000, conferenceAttendance: 4500 },
-    { date: '12-19', totalVisitors: 22000, totalRevenue: 680000, foodSales: 98000, conferenceAttendance: 3900 },
-    { date: '12-20', totalVisitors: 24000, totalRevenue: 700000, foodSales: 108000, conferenceAttendance: 4100 },
-    { date: '12-21', totalVisitors: 20000, totalRevenue: 620000, foodSales: 88000, conferenceAttendance: 3500 },
-  ];
-
-  const totalExhibitors = overview?.totalExhibitors || 156;
-  const totalVisitors = overview?.totalVisitors || 2850;
-  const totalRevenue = overview?.totalRevenue || mockDailyStats.reduce((sum: number, d: any) => sum + (d.totalRevenue || 0), 0);
-  const avgAttendance = overview?.avgAttendance || Math.round(mockDailyStats.reduce((sum: number, d: any) => sum + (d.totalVisitors || 0), 0) / mockDailyStats.length);
+  const dailyStats = overview?.dailyStats || [];
+  
+  const totalExhibitors = overview?.totalExhibitors || 0;
+  const totalVisitors = overview?.totalVisitors || 0;
+  const totalRevenue = overview?.totalRevenue || 0;
+  const avgAttendance = overview?.avgAttendance || 0;
 
   const boothStats = overview?.boothStats || {
-    total: 192,
-    sold: 125,
-    reserved: 28,
-    available: 39,
+    total: 0,
+    sold: 0,
+    reserved: 0,
+    available: 0,
   };
 
   const conferenceStats = overview?.conferenceStats || {
-    total: 24,
-    upcoming: 12,
-    ongoing: 8,
-    ended: 4,
+    total: 0,
+    upcoming: 0,
+    ongoing: 0,
+    ended: 0,
   };
 
-  const revenueData = mockDailyStats.map((d: any) => ({
+  const revenueData = dailyStats.map((d: any) => ({
     date: d.date,
     展位收入: (d.totalRevenue || 0) - (d.foodSales || 0),
     餐饮收入: d.foodSales || 0,
   }));
 
-  const visitorData = mockDailyStats.map((d: any) => ({
+  const visitorData = dailyStats.map((d: any) => ({
     date: d.date,
     观众流量: d.totalVisitors || 0,
     会议参与: d.conferenceAttendance || 0,
   }));
 
-  const hallHeatData = [
-    { name: '1号馆', value: 4500, color: '#3b82f6' },
-    { name: '2号馆', value: 3800, color: '#10b981' },
-    { name: '3号馆', value: 4200, color: '#f59e0b' },
-    { name: '4号馆', value: 2900, color: '#8b5cf6' },
+  const hallHeatData = overview?.hallHeatData || [
+    { name: '1号馆', value: 0, color: '#3b82f6' },
+    { name: '2号馆', value: 0, color: '#10b981' },
+    { name: '3号馆', value: 0, color: '#f59e0b' },
+    { name: '4号馆', value: 0, color: '#8b5cf6' },
   ];
 
-  const industryDistribution = [
-    { name: '电子科技', value: 85, color: '#3b82f6' },
-    { name: '医疗器械', value: 62, color: '#10b981' },
-    { name: '新能源', value: 58, color: '#f59e0b' },
-    { name: '汽车制造', value: 45, color: '#ef4444' },
-    { name: '机械设备', value: 38, color: '#8b5cf6' },
-    { name: '其他', value: 62, color: '#6b7280' },
-  ];
+  const industryDistribution = overview?.industryDistribution || [];
 
   if (loading) {
     return (
@@ -144,7 +124,7 @@ const AdminDashboard: React.FC = () => {
                 <p className="text-sm text-gray-500">参展商数</p>
                 <p className="text-3xl font-bold text-gray-900 mt-1">{totalExhibitors}</p>
                 <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                  <TrendingUp className="w-3 h-3" /> +12.5%
+                  <TrendingUp className="w-3 h-3" /> 实时数据
                 </p>
               </div>
               <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
@@ -159,7 +139,7 @@ const AdminDashboard: React.FC = () => {
                 <p className="text-sm text-gray-500">累计观众</p>
                 <p className="text-3xl font-bold text-gray-900 mt-1">{totalVisitors}</p>
                 <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                  <TrendingUp className="w-3 h-3" /> +18.2%
+                  <TrendingUp className="w-3 h-3" /> 实时数据
                 </p>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
@@ -174,7 +154,7 @@ const AdminDashboard: React.FC = () => {
                 <p className="text-sm text-gray-500">总收入</p>
                 <p className="text-3xl font-bold text-gray-900 mt-1">¥{(totalRevenue / 10000).toFixed(0)}万</p>
                 <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                  <TrendingUp className="w-3 h-3" /> +25.8%
+                  <TrendingUp className="w-3 h-3" /> 实时数据
                 </p>
               </div>
               <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
@@ -189,7 +169,7 @@ const AdminDashboard: React.FC = () => {
                 <p className="text-sm text-gray-500">日均流量</p>
                 <p className="text-3xl font-bold text-gray-900 mt-1">{avgAttendance}</p>
                 <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                  <TrendingUp className="w-3 h-3" /> +8.3%
+                  <TrendingUp className="w-3 h-3" /> 近7日均值
                 </p>
               </div>
               <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
@@ -224,8 +204,12 @@ const AdminDashboard: React.FC = () => {
               </div>
             </div>
             <div className="h-3 w-full bg-gray-200 rounded-full overflow-hidden flex">
-              <div className="bg-green-500 h-full" style={{ width: `${(boothStats.sold / boothStats.total) * 100}%` }} />
-              <div className="bg-yellow-500 h-full" style={{ width: `${(boothStats.reserved / boothStats.total) * 100}%` }} />
+              {boothStats.total > 0 && (
+                <>
+                  <div className="bg-green-500 h-full" style={{ width: `${(boothStats.sold / boothStats.total) * 100}%` }} />
+                  <div className="bg-yellow-500 h-full" style={{ width: `${(boothStats.reserved / boothStats.total) * 100}%` }} />
+                </>
+              )}
             </div>
           </div>
 
@@ -253,8 +237,12 @@ const AdminDashboard: React.FC = () => {
               </div>
             </div>
             <div className="h-3 w-full bg-gray-200 rounded-full overflow-hidden flex">
-              <div className="bg-blue-500 h-full" style={{ width: `${(conferenceStats.upcoming / conferenceStats.total) * 100}%` }} />
-              <div className="bg-green-500 h-full" style={{ width: `${(conferenceStats.ongoing / conferenceStats.total) * 100}%` }} />
+              {conferenceStats.total > 0 && (
+                <>
+                  <div className="bg-blue-500 h-full" style={{ width: `${(conferenceStats.upcoming / conferenceStats.total) * 100}%` }} />
+                  <div className="bg-green-500 h-full" style={{ width: `${(conferenceStats.ongoing / conferenceStats.total) * 100}%` }} />
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -262,72 +250,88 @@ const AdminDashboard: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="card">
             <h3 className="text-lg font-semibold mb-4">收入趋势</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={revenueData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} />
-                <YAxis stroke="#9ca3af" fontSize={12} />
-                <Tooltip />
-                <Legend />
-                <Area type="monotone" dataKey="展位收入" stackId="1" stroke="#3b82f6" fill="#93c5fd" />
-                <Area type="monotone" dataKey="餐饮收入" stackId="1" stroke="#10b981" fill="#6ee7b7" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {revenueData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <AreaChart data={revenueData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} />
+                  <YAxis stroke="#9ca3af" fontSize={12} />
+                  <Tooltip />
+                  <Legend />
+                  <Area type="monotone" dataKey="展位收入" stackId="1" stroke="#3b82f6" fill="#93c5fd" />
+                  <Area type="monotone" dataKey="餐饮收入" stackId="1" stroke="#10b981" fill="#6ee7b7" />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-gray-400">暂无数据</div>
+            )}
           </div>
 
           <div className="card">
             <h3 className="text-lg font-semibold mb-4">观众流量趋势</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={visitorData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} />
-                <YAxis stroke="#9ca3af" fontSize={12} />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="观众流量" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6' }} />
-                <Line type="monotone" dataKey="会议参与" stroke="#f59e0b" strokeWidth={2} dot={{ fill: '#f59e0b' }} />
-              </LineChart>
-            </ResponsiveContainer>
+            {visitorData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={visitorData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} />
+                  <YAxis stroke="#9ca3af" fontSize={12} />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="观众流量" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6' }} />
+                  <Line type="monotone" dataKey="会议参与" stroke="#f59e0b" strokeWidth={2} dot={{ fill: '#f59e0b' }} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-gray-400">暂无数据</div>
+            )}
           </div>
 
           <div className="card">
             <h3 className="text-lg font-semibold mb-4">各展馆热度分布</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={hallHeatData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} />
-                <YAxis stroke="#9ca3af" fontSize={12} />
-                <Tooltip />
-                <Bar dataKey="value" radius={[8, 8, 0, 0]}>
-                  {hallHeatData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            {hallHeatData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={hallHeatData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} />
+                  <YAxis stroke="#9ca3af" fontSize={12} />
+                  <Tooltip />
+                  <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+                    {hallHeatData.map((entry: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-gray-400">暂无数据</div>
+            )}
           </div>
 
           <div className="card">
             <h3 className="text-lg font-semibold mb-4">行业展商分布</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <PieChart>
-                <Pie
-                  data={industryDistribution}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={2}
-                  dataKey="value"
-                >
-                  {industryDistribution.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            {industryDistribution.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <PieChart>
+                  <Pie
+                    data={industryDistribution}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={2}
+                    dataKey="value"
+                  >
+                    {industryDistribution.map((entry: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-gray-400">暂无数据</div>
+            )}
           </div>
         </div>
 
@@ -349,22 +353,22 @@ const AdminDashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {['A区', 'B区', 'C区', 'D区', 'E区', 'F区'].map((zone, idx) => {
-                  const totalBooths = 32;
-                  const sold = Math.round(20 + idx * 2);
+                {hallHeatData.map((hall: any, idx: number) => {
+                  const totalBooths = Math.round(boothStats.total / hallHeatData.length) || 32;
+                  const sold = Math.round(totalBooths * 0.6);
                   const heat = Math.floor(30 + Math.random() * 40);
                   return (
-                    <tr key={zone} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4 font-medium">{zone}</td>
+                    <tr key={hall.name} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="py-3 px-4 font-medium">{hall.name}</td>
                       <td className="py-3 px-4">{totalBooths}</td>
                       <td className="py-3 px-4">{sold}</td>
-                      <td className="py-3 px-4">{Math.floor(100 + Math.random() * 200)}</td>
+                      <td className="py-3 px-4">{hall.value || 0}</td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
                           <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-green-500"
-                              style={{ width: `${(sold / totalBooths) * 100}%` }}
+                              style={{ width: `${Math.round((sold / totalBooths) * 100)}%` }}
                             />
                           </div>
                           <span className="text-sm">{Math.round((sold / totalBooths) * 100)}%</span>
@@ -382,6 +386,11 @@ const AdminDashboard: React.FC = () => {
                     </tr>
                   );
                 })}
+                {hallHeatData.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-gray-400">暂无数据</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
